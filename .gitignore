@@ -1,0 +1,22 @@
+/target/
+**/node_modules/
+**/dist/
+**/.gradle/
+**/build/
+**/local.properties
+**/Pods/
+**/DerivedData/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+
+# pi / gsd tooling
+.pi/
