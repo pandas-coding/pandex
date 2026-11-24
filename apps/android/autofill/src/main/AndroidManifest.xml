@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name="com.pandex.autofill.SpikeAutofillService"
+            android:exported="true"
+            android:label="@string/pandex_spike_service"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:process=":autofill">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/pandex_spike_autofill" />
+        </service>
+
+        <activity
+            android:name="com.pandex.autofill.SpikeLoginActivity"
+            android:exported="true"
+            android:label="@string/pandex_spike_login">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

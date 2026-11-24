@@ -1,14 +1,16 @@
 # Pandex Android 宿主（M0 spike）
 
 门槛 2/3 的最小 Gradle 宿主（见 [../../docs/m0-spike.md](../../docs/m0-spike.md)）：
-`MainActivity` 设 `FLAG_SECURE` 后以 `NshView` 承载 Rust 应用；门槛 3 的 Kotlin
-autofill module 将加在同一工程。NSH 0.6.1 无 FLAG_SECURE API 且 `AppActivity`
+`MainActivity` 设 `FLAG_SECURE` 后以 `NshView` 承载 Rust 应用；debug APK 同时包含
+门槛 3 的 Kotlin Autofill 服务与测试登录页。NSH 0.6.1 无 FLAG_SECURE API 且 `AppActivity`
 为 final，故宿主自建（architecture.md 规划的 `apps/android/` 形态）。
 
 ## 模块
 
 - `:nsh` — NSH Android runtime 的 Java 侧，编译自 crate 源码（见下）。
 - `:app` — 宿主 Activity + Rust 应用产物（`jniLibs/`、`assets/nsh/`）。
+- `:autofill` — 仅由 `:app` 的 debug 变体引入；Kotlin 测试服务在 `:autofill` 独立进程运行。
+  只为 `Pandex M0 Test Login` 返回虚构凭据，不提供保存、不连接密码库。
 
 ## Provenance（版本锁定 0.6.1，升级单独评审）
 

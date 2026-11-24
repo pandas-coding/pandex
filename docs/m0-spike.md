@@ -14,7 +14,8 @@ M0 门槛定义见 [tech-selection.md](tech-selection.md)「M0 门槛」与 [arc
 - [x] 门槛 1 真机验证：**通过**（证据与厂商怪癖见下）。
 - [x] 门槛 2 真机验证：**通过**（含 Dialog 窗口泄露的发现与宿主侧修复，见下）。
 - [x] 成果提交（2026-11-24）：spike UI/测试/Gradle 宿主/本文档入库；`libnsh.so` 与 `assets/nsh/` 为可复现构建产物，**不入库**（gitignore；刷新步骤见 `apps/android/README.md`，新克隆后先刷新再构建）。
-- [ ] 门槛 3–5。
+- [x] 门槛 3 真机验证：**通过**（Kotlin 服务同 APK、独立进程及双字段填充，NSH 主界面正常）。
+- [ ] 门槛 4–5。
 
 ## 调研结论（NSH 0.6.1，决定各门槛的验证路径）
 
@@ -122,11 +123,32 @@ adb shell dumpsys window windows | grep -iE "pandex|secure"
 
 ## 门槛 3：Kotlin autofill module 同 APK 共存
 
-**最小代码**：同一 Gradle 宿主加 Kotlin `:autofill` 模块——最小 `AutofillService`（`android:process=":autofill"` 独立进程、`BIND_AUTOFILL_SERVICE` 权限、manifest intent-filter），`onFillRequest` 对测试目标返回硬编码用户名/密码数据集。**M0 只验证共存与可填充，不接 UniFFI/core**（那是 M0 之后的事）。
+**最小代码**：`apps/android/autofill/` 是同一 Gradle 宿主的 Kotlin 模块，仅由 `:app` 的 debug 变体打包。服务声明 `android:process=":autofill"`、`BIND_AUTOFILL_SERVICE`、系统 intent-filter 和 `android.autofill` 元数据。只对当前 APK 的 `SpikeLoginActivity` 返回固定虚构凭据，不读取输入值、不提供保存、不接 UniFFI/core。release APK 不带测试服务或登录页。
 
-**真机步骤**：安装同一 APK → 系统设置选 Pandex 为 autofill 服务 → 打开测试登录页（Chrome 或自带测试 Activity）→ logcat 观察 `:autofill` 进程被调用 → 确认填充成功且 NSH 主界面正常。
+**本地验证**（先按 [Android 宿主 README](../apps/android/README.md) 刷新 NSH 产物）：
+
+```sh
+cd apps/android
+source ~/.bashrc.d/android.sh
+gradle :app:assembleDebug :app:assembleRelease :autofill:lintDebug
+python3 test_m0_autofill_apk.py -v
+```
+
+**真机步骤**：
+
+1. 安装 `app/build/outputs/apk/debug/app-debug.apk`，在手机上允许安装。记录原 Autofill 服务，在系统设置中选 `Pandex Autofill (M0)`（可搜索「自动填充」）。
+2. 打开桌面上的 `Pandex M0 Test Login`，或执行 `adb shell am start -n com.pandex.app/com.pandex.autofill.SpikeLoginActivity`。先点 `Check demo values` 确认空白表单显示 `FAIL`，再聚焦用户名并点系统建议 `Pandex M0 demo login`。不要手工输入测试值；再次点 `Check demo values`，应显示 `PASS: both demo fields match`，密码仍是掩码。
+3. 用 `adb logcat -d -s PandexM0Autofill:I` 确认服务返回数据集；用 `adb shell pidof com.pandex.app:autofill` 与 `adb shell pidof com.pandex.app` 核对独立 PID。保持测试服务启用，打开主入口 `adb shell am start -n com.pandex.app/.MainActivity`，确认 NSH 锁定页和演示解锁、回锁正常，主密码不出现此测试建议。
+4. 验收后在系统设置恢复原 Autofill 服务。
 
 **通过判据**：单 APK 安装无冲突；服务可绑定、可填充；主 UI 不受影响。
+
+**真机结果（2026-11-24，荣耀 BVL-AN16 / Android 17）：通过。**
+
+- 同一 debug APK 首次安装返回 `INSTALL_FAILED_ABORTED: User rejected permissions`；用户在手机上确认后重试成功。系统设置已选中 `com.pandex.app/com.pandex.autofill.SpikeAutofillService`。
+- 空白表单检查为 `FAIL`；用户选择系统建议 `Pandex M0 demo login` 后，未手工输入即显示 `PASS: both demo fields match`。`pidof` 显示宿主 PID `26536`、`:autofill` PID `26621`。本次事后未抓到服务的 logcat 行，以实际填充和独立 PID 为证。
+- 保持 Pandex 为默认服务，`MainActivity` 正常启动；用户确认主密码框未出现测试建议，`Unlock → Vault → Lock` 往返成功。
+- debug/release 构建、`:autofill:lintDebug` 和两项 APK 冒烟测试通过。`:app:lintDebug` 仍报未改动的 `MainActivity` 的 `NewApi` / `MissingPermission` 问题，不属于本次变更。
 
 ## 门槛 4：中端真机冷启动 / 内存基线
 

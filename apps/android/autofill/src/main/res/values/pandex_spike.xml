@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="pandex_spike_username" type="id" />
+    <item name="pandex_spike_password" type="id" />
+    <string name="pandex_spike_service">Pandex Autofill (M0)</string>
+    <string name="pandex_spike_login">Pandex M0 Test Login</string>
+    <string name="pandex_spike_username">Test username</string>
+    <string name="pandex_spike_password">Test password</string>
+    <string name="pandex_spike_dataset">Pandex M0 demo login</string>
+    <string name="pandex_spike_check">Check demo values</string>
+    <string name="pandex_spike_match">PASS: both demo fields match</string>
+    <string name="pandex_spike_mismatch">FAIL: demo fields do not match</string>
+</resources>
