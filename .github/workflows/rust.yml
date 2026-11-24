@@ -13,7 +13,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libgtk-4-dev
+          libgstreamer1.0-dev
+          libgstreamer-plugins-base1.0-dev
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'nsh.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
@@ -36,6 +50,16 @@ jobs:
           $nshBin = Join-Path $env:LOCALAPPDATA 'nsh\bin'
           Add-Content -Path $env:GITHUB_PATH -Value $nshBin
           & (Join-Path $nshBin 'nsh.exe') --version
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'nsh.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - name: Package Windows app
         shell: pwsh
         run: nsh package --target windows --out .nsh/out

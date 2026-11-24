@@ -170,7 +170,7 @@ adb shell dumpsys meminfo com.pandex.app                # 稳定后记录 TOTAL 
 
 ## 门槛 5：Windows 构建链
 
-**最小代码**：`.github/workflows/rust.yml` 的 `windows-package` job 在 `windows-latest` 上通过官方 PowerShell 安装脚本（`irm https://nsh.dev/install.ps1 | iex`）安装 NSH CLI，执行 `nsh package --target windows --out .nsh/out`，检查并启动生成的 `.exe` 做短时冒烟验证，最后上传 `.nsh/out`（包含 `.exe` 与 `.zip` bundle）。Ubuntu `check` job 在构建前安装 `libgtk-4-dev`，提供 NSH Linux runner 所需的 GLib/GTK 系统库。WSL 本地不构建 Windows（见 [dev-environment-wsl.md](dev-environment-wsl.md)）。
+**最小代码**：`.github/workflows/rust.yml` 的 `windows-package` job 在 `windows-latest` 上通过官方 PowerShell 安装脚本（`irm https://nsh.dev/install.ps1 | iex`）安装 NSH CLI，使用 GitHub Actions cache 复用 Cargo registry、git checkout 和 `target` 编译缓存，执行 `nsh package --target windows --out .nsh/out`，检查并启动生成的 `.exe` 做短时冒烟验证，最后上传 `.nsh/out`（包含 `.exe` 与 `.zip` bundle）。Ubuntu `check` job 在构建前安装 `libgtk-4-dev`、`libgstreamer1.0-dev` 和 `libgstreamer-plugins-base1.0-dev`，提供 NSH Linux runner 所需的 GTK/GLib/GStreamer 系统库。WSL 本地不构建 Windows（见 [dev-environment-wsl.md](dev-environment-wsl.md)）。
 
 **通过判据**：CI 产出可运行的 `<name>.exe` + bundle（zip）；在 Windows 侧冒烟运行。
 
