@@ -3,10 +3,31 @@
 // (`nsh.json` "root").
 import { expect, open, test } from "nsh/test";
 
-test("counts taps", async () => {
+test("unlocks with a master password and lists logins", async () => {
   const app = await open(".");
-  expect(app.texts()).toContain("Count: 0");
-  await app.press("Tap");
-  await app.press("Tap");
-  expect(app.texts()).toContain("Count: 2");
+  expect(app.texts()).toContain("Pandex");
+  expect(app.texts()).not.toContain("GitHub");
+
+  // Empty password does not unlock.
+  await app.press("Unlock");
+  expect(app.texts()).not.toContain("Vault");
+
+  await app.type("id:master-password", "correct horse");
+  expect(app.value("id:master-password")).toBe("correct horse");
+  await app.press("Unlock");
+  expect(app.texts()).toContain("Vault");
+  expect(app.texts()).toContain("GitHub");
+  expect(app.texts()).toContain("Proton Mail");
+
+  await app.press("Lock");
+  expect(app.texts()).toContain("Pandex");
+  expect(app.texts()).not.toContain("GitHub");
+  expect(app.value("id:master-password")).toBe("");
+});
+
+test("return key submits the master password", async () => {
+  const app = await open(".");
+  await app.type("id:master-password", "correct horse");
+  await app.submit("id:master-password");
+  expect(app.texts()).toContain("Vault");
 });

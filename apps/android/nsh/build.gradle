@@ -1,0 +1,19 @@
+// NSH 0.6.1 Android runtime, compiled from the crate's java/ sources
+// (README.md "Provenance"). Same sources NSH builds its runtime dex from.
+plugins {
+    id "com.android.library"
+}
+
+android {
+    namespace "com.longbridge.nsh"
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 26
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

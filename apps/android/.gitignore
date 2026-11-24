@@ -1,0 +1,7 @@
+.gradle/
+build/
+local.properties
+
+# 可复现构建产物（nsh package 解包，见 README「刷新产物」），不入库
+app/src/main/jniLibs/
+app/src/main/assets/nsh/
