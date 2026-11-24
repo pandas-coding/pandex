@@ -1,43 +1,53 @@
-# Pandex 🐼
+# Pandex
 
-以 Rust 为共享核心的跨平台密码管理器，由 pandas-coding 发起。
-
-目标平台：Windows、Android，并探索 iOS 支持。桌面端与移动端的 UI 技术尚未确定，候选包括 Tauri 和 Kotlin / Compose Multiplatform。
-
-当前处于项目初始化阶段：仅包含可构建的 Rust workspace 和客户端目录占位，尚未实现加密、存储或密码管理功能。
-
-## 项目结构
-
-```text
-pandex/
-├── crates/
-│   └── pandex-core/       # 跨平台 Rust 核心
-├── apps/
-│   ├── desktop/           # 桌面客户端（技术待定）
-│   └── mobile/            # 移动客户端（技术待定）
-├── docs/
-│   └── architecture.md    # 架构边界与待定事项
-├── .github/workflows/     # Rust 持续集成
-└── Cargo.toml             # Rust workspace
-```
-
-## 本地开发
-
-安装支持 Rust 2024 edition 的稳定版 Rust，并确保 rustfmt 和 Clippy 可用：
+An app written in Rust: its UI is `src/lib.rs`, and `nsh.json` names the root component (`"root": "App"`).
 
 ```sh
-rustup component add rustfmt clippy
-cargo check --workspace
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+nsh run                      # this machine's backend; --target ios, android, web, macos, linux or windows
+nsh check                    # cargo check of the crate, then type checks App.test.tsx
+nsh test                     # cargo test, then App.test.tsx: the root tested from TypeScript, headless; --target to run it on a platform
+nsh test nsh.json --trace    # headless: what the root mounts, and the time of each commit
+nsh package --target web     # or ios, android, macos, linux, windows
 ```
 
-## 开发方向
+`nsh run` and `nsh package` mount the root on every platform, the browser included, without QuickJS: the app is Rust
+and native code from start to end (in the browser, with NSH's page script). Rust edits rebuild and restart the app.
 
-- 定义密码库数据模型、威胁模型与密钥生命周期。
-- 选择成熟的密码学库，设计加密存储与解锁流程。
-- 确定客户端技术，并接入共享核心。
-- 逐步完善自动锁定、密码生成、自动填充与同步能力。
+```sh
+cargo run
+```
 
-参见 [架构说明](docs/architecture.md)。
+This starts the root directly on the machine's native desktop backend: GTK 4 on Linux, AppKit on macOS, Win32 on
+Windows. Install the backend's development libraries before building.
+
+The `nsh` commands build the app's runners from the NSH crates `Cargo.toml` depends on: crates.io's at the version of
+the `nsh` you run (keep the `nsh-*` dependencies at that version when you upgrade `nsh`), or an NSH checkout's by path.
+
+## Adding a TSX entry
+
+TSX screens can use the Rust components and modules, with hot reloading for the TSX. The crate's set,
+`#[native_module("pandex/native")]` in `src/lib.rs`, already exports `App`. Add an `App.tsx`:
+
+```tsx
+import { mount } from "nsh";
+import { App } from "pandex/native";
+
+mount(App);
+```
+
+then run it with `nsh run App.tsx` (`tsconfig.json` is there for it and the test): a named TSX entry
+runs on QuickJS, while `nsh run` alone keeps running the Rust root. The first `nsh build App.tsx` writes the TypeScript
+declarations of `pandex/native` into `.nsh/types`. Register more with `registry.register::<…>()` (components),
+`registry.module::<…>()` and `registry.class::<…>()`.
+
+NSH-generated files stay in `.nsh/`: runner sources in `.nsh/rust/` and default packages in `.nsh/out/`.
+Cargo keeps its normal `target/` directory and respects your existing `CARGO_TARGET_DIR`.
+
+We recommend building with [huacnlee/cargo](https://github.com/huacnlee/cargo), the Cargo NSH is developed with: a
+drop-in fork that builds each dependency once for all your projects and Git worktrees and keeps its build directory
+under a size limit on its own, with nothing to configure. It builds under `~/.cargo/targets/` and still puts the
+binaries in `target/`; it replaces `~/.cargo/bin/cargo`, and its README says how to put rustup's back.
+
+```sh
+curl -fsSL https://huacnlee.github.io/cargo/install.sh | sh     # Windows: irm https://huacnlee.github.io/cargo/install.ps1 | iex
+```
