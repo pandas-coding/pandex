@@ -22,3 +22,42 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NSH CLI
+        shell: bash
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          nsh --version
+      - name: Package Windows app
+        shell: pwsh
+        run: nsh package --target windows --out .nsh/out
+      - name: Smoke test Windows package
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path .nsh/out -Recurse -Filter *.exe | Select-Object -First 1
+          if ($null -eq $exe) {
+            throw "Windows package did not contain an executable"
+          }
+
+          $zip = Get-ChildItem -Path .nsh/out -Recurse -Filter *.zip | Select-Object -First 1
+          if ($null -eq $zip) {
+            throw "Windows package did not contain a zip bundle"
+          }
+
+          $process = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          Start-Sleep -Seconds 5
+          if ($process.HasExited) {
+            throw "Packaged Windows executable exited during smoke test with code $($process.ExitCode)"
+          }
+          Stop-Process -Id $process.Id -Force
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pandex-windows
+          path: .nsh/out
+          if-no-files-found: error

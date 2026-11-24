@@ -15,7 +15,8 @@ M0 门槛定义见 [tech-selection.md](tech-selection.md)「M0 门槛」与 [arc
 - [x] 门槛 2 真机验证：**通过**（含 Dialog 窗口泄露的发现与宿主侧修复，见下）。
 - [x] 成果提交（2026-11-24）：spike UI/测试/Gradle 宿主/本文档入库；`libnsh.so` 与 `assets/nsh/` 为可复现构建产物，**不入库**（gitignore；刷新步骤见 `apps/android/README.md`，新克隆后先刷新再构建）。
 - [x] 门槛 3 真机验证：**通过**（Kotlin 服务同 APK、独立进程及双字段填充，NSH 主界面正常）。
-- [ ] 门槛 4–5。
+- [x] 门槛 5 CI 构建链：`.github/workflows/rust.yml` 增加 `windows-latest` job，安装 NSH CLI、打包 Windows 目录、启动 exe 冒烟验证并上传 exe/bundle；待 GitHub Actions 首次运行完成最终验收。
+- [ ] 门槛 4（按决定跳过中端机测试，保留未测）。
 
 ## 调研结论（NSH 0.6.1，决定各门槛的验证路径）
 
@@ -169,9 +170,11 @@ adb shell dumpsys meminfo com.pandex.app                # 稳定后记录 TOTAL 
 
 ## 门槛 5：Windows 构建链
 
-**最小代码**：`.github/workflows/` 增加 `windows-latest` job：安装 nsh CLI → `nsh package --target windows` → 上传产物。WSL 本地不构建 Windows（见 dev-environment-wsl.md）。
+**最小代码**：`.github/workflows/rust.yml` 的 `windows-package` job 在 `windows-latest` 上安装 NSH CLI，执行 `nsh package --target windows --out .nsh/out`，检查并启动生成的 `.exe` 做短时冒烟验证，最后上传 `.nsh/out`（包含 `.exe` 与 `.zip` bundle）。WSL 本地不构建 Windows（见 [dev-environment-wsl.md](dev-environment-wsl.md)）。
 
 **通过判据**：CI 产出可运行的 `<name>.exe` + bundle（zip）；在 Windows 侧冒烟运行。
+
+**CI 验收状态（2026-11-25）**：workflow 已入库；需在 GitHub Actions 首次运行后确认 Windows runner 的实际产物与启动结果。
 
 ## 真机操作怪癖（荣耀 Magic6 Pro / MagicOS，门槛 1–2 踩坑记录）
 
