@@ -61,6 +61,30 @@ P11 依赖 P6（+P7）；P12 依赖 P6 与威胁模型定稿。里程碑分组�
 
 **风险**：Argon2id 在低端机的耗时需实测（P5 只做参数记录，中端机测量可结合 M0 门槛 4 补测）。
 
+### P5 验收记录（2026-11-26）
+
+威胁模型定稿见 [threat-model.md](threat-model.md)（architecture.md 对应待定项已关闭）。
+
+实现：`pandex-core` 新增 `crypto.rs`（Argon2id KEK 派生 + XChaCha20-Poly1305 VEK
+包裹/解包裹，域分隔 AAD `pandex-vek-wrap-v1`）；`Core::create_vault` 生成随机 VEK 并
+包裹，`unlock` 走真实 KDF+AEAD（tag 失败 → `InvalidPassword`），`lock` 用 `zeroize`
+清零 VEK 与中间密钥。`Snapshot`/`EntrySummary` 改 owned `String`，新增 `KdfParams`/
+`WrappedVek` plain struct（FFI 前置）；core 移除演示密码。依赖：argon2 0.6、
+chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存演示条目，
+演示库由 app 薄壳以临时夹具密码启动时创建（P6 首次运行流程替换）。
+
+- 本地基线（WSL）：`cargo fmt --check` ✓、`cargo clippy --workspace --all-targets
+  --locked -D warnings` ✓、`cargo test --workspace --locked` ✓（core 16 passed，含
+  KDF/AEAD known-answer 向量、错误密码拒绝、篡改检测、lock 清零）；`nsh test` ✓
+  （2 用例，解锁已走真实 KDF+AEAD，UI 行为不变）。
+- Android 构建链（WSL 本地）：`nsh package --target android --abi arm64-v8a` ✓
+  （libnsh.so 交叉编译 1m35s）→ 刷新 jniLibs/assets ✓ → `gradle :app:assembleDebug
+  :app:assembleRelease :autofill:lintDebug` ✓（`Unable to strip libnsh.so` 为 M0 已知
+  现象）→ `test_m0_autofill_apk.py` ✓ 2/2。产物 sanity：libnsh.so 含
+  `pandex-vek-wrap-v1`/argon2/`Crypto` 错误变体，旧 `correct-password` 已消失。
+  未做真机验收（无 adb 设备）。
+- Windows 构建链：待推送触发 CI `windows-package` job 后回写。
+
 ## P6 数据模型 + 持久化 + 首次运行
 
 **范围**：core 数据模型与存储、app 层首次运行/条目 UI 最小扩展、平台存储路径注入。

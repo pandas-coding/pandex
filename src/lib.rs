@@ -8,6 +8,10 @@ use nsh_core::element::{AutoFill, input};
 use nsh_core::prelude::*;
 use pandex_core::{Core, EntrySummary, Snapshot};
 
+/// Temporary demo master password provisioning the in-memory P5 vault.
+/// Removed in P6 when the first-run "create vault" flow replaces demo setup.
+const DEMO_MASTER_PASSWORD: &str = "correct horse";
+
 #[native_module("pandex/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
@@ -23,7 +27,12 @@ struct AppState {
 #[component]
 pub fn App() -> impl IntoElement {
     let state = Rc::new(AppState {
-        core: Rc::new(RefCell::new(Core::new())),
+        core: Rc::new(RefCell::new({
+            let mut core = Core::new();
+            core.create_vault(DEMO_MASTER_PASSWORD)
+                .expect("provision demo vault");
+            core
+        })),
         snapshot: signal(Core::new().snapshot()),
         entries: signal(Core::new().entries()),
     });
@@ -94,7 +103,7 @@ pub fn App() -> impl IntoElement {
                             )
                             .child(each(
                                 move || state_for_entries.entries.get(),
-                                |item| item.title,
+                                |item| item.title.clone(),
                                 move |item, _| {
                                     view()
                                         .py_3()
