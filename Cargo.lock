@@ -2259,6 +2259,7 @@ dependencies = [
  "nsh-platform-linux",
  "nsh-platform-macos",
  "nsh-platform-windows",
+ "pandex-core",
 ]
 
 [[package]]
@@ -2726,6 +2727,10 @@ checksum = "7f59006ce1e204c30956638535b74d317bca99477b9356dfaec54c37f6f600ab"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "pandex-core"
+version = "0.1.0"
 
 [[package]]
 name = "pango"
