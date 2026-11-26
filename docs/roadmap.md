@@ -117,6 +117,49 @@ chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存�
 2. `nsh test` 覆盖创建库 → 解锁 → 列表 → 锁定往返；真机/桌面手测重启后数据仍在。
 3. 构建链回归 + Android 真机安装冒烟（创建库、杀进程重开、解锁）。
 
+### P6 验收记录（2026-11-26）
+
+实现：
+
+- core 新增 `model.rs`（`Entry`/`EntrySummary`/`EntryDraft`，owned + serde，`Entry`
+  derive `Zeroize`）、`storage.rs`（`VaultStore` 接口 + `FileStore` 原子写 +
+  `MemoryStore`）、`format.rs`（版本化库文件 `PANDEX` v1，头部绑定为内容 AAD）；
+  `crypto.rs` 增内容加解密。`Core` 改为注入存储：`new(store)` 加载密文头、
+  `create_vault` 首跑落盘并解锁、`unlock` 解包裹 VEK + 解密内容、`lock` 清零 VEK 与
+  条目、`entries` 只给 summary、`entry(id)` 按需披露、`add/update/delete_entry`
+  每次重加密原子落盘。`UnlockError` 统一为 `Error`（增 Storage/Corrupt/VaultExists/
+  NoVault/Locked/NotFound）。依赖增 serde/serde_json、zeroize derive 特性。
+- app 薄壳移除演示密码夹具：`data_dir()` 注入 `FileStore`（无数据目录回退
+  `MemoryStore`，headless 测试隔离），三分支 UI（创建库 / 解锁 / 库列表）+ 最小条目
+  增改删表单。**额外（用户要求，超出 P6 最小 UI 范围）**：参考 Proton Pass 的视觉
+  刷新——`nsh.json` `"theme"` Proton 紫双主题（light/dark 跟随系统），`App()` 内
+  `set_tokens` 统一各入口；卡片式条目 + 字母头像 + 品牌徽章 + 圆角输入 + 全宽主按钮。
+  修复刘海安全区 bug：`p_safe_area()` 的 env padding 曾被固定 `px/py` 覆盖，改为
+  嵌套两层 view 使安全区与内容 padding 相加。
+
+验证：
+
+- 本地基线（WSL）：`cargo fmt --check` ✓、`cargo clippy --workspace --all-targets
+  --locked -D warnings` ✓、`cargo test --workspace --locked` ✓（core 37 passed：
+  roundtrip、内容/头部篡改检测、原子写、首跑/重开、锁定态不落明文、CRUD、按需披露、
+  KAT 向量保留）；`nsh test` ✓ 5 用例（创建→添加→锁定/解锁往返、回车提交、确认不符
+  拒绝、错误密码拒绝、编辑+删除）。
+- Android 构建链（WSL 本地）：`nsh package --target android --abi arm64-v8a` ✓ →
+  刷新 jniLibs/assets ✓ → `gradle :app:assembleDebug :app:assembleRelease
+  :autofill:lintDebug` ✓（`Unable to strip libnsh.so` 为 M0 已知现象）→
+  `test_m0_autofill_apk.py` ✓ 2/2。产物 sanity：libnsh.so 含
+  `pandex-vault-content-v1`/`pandex-vek-wrap-v1`/`Entry` 字段与 Proton 主题 cssVars，
+  演示密码 `correct horse` 已消失。
+- Android 真机（BVL-AN16，WiFi adb）：安装 → `pm clear` 首跑 → 创建库
+  （`vault.pandex` 158B、权限 0600）→ 添加条目（333B，磁盘无 GitHub/octocat/明文
+  密码泄漏）→ `am force-stop` 冷重开进解锁屏 → 解锁后条目恢复。安全区实测：Vault
+  头部 top=279px、Add/Lock top=295px，均避开 141px 刘海（修复前 Add/Lock 在 112px
+  压刘海）。Proton 配色 headless 实测：light 卡片 #FFFFFF、dark 卡片 #232135。
+- Windows 构建链（GitHub Actions）：待推送触发，结论补记于此。
+
+**结论**：P6 验收 1–2 全过，验收 3 的本地构建链 + Android 真机冒烟通过；Windows CI
+待推送后补记。下一步 = P7。
+
 ## P7 超时自动锁定 + 会话加固
 
 **范围**：core 超时状态机 + UI/宿主事件转发。
@@ -227,7 +270,7 @@ Windows CI 打包链含宿主注册产物；构建链回归。
 ## 进度
 
 - [x] P5 加密基础（含 threat-model 定稿）
-- [ ] P6 数据模型 + 持久化
+- [ ] P6 数据模型 + 持久化（本地 + Android 真机验收通过；Windows CI 待推送补记）
 - [ ] P7 超时自动锁定
 - [ ] P8 生物识别 + 平台密钥管理
 - [ ] P9 UniFFI 门面

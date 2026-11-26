@@ -1,8 +1,1 @@
-{
-  "name": "Pandex",
-  "id": "com.pandex.app",
-  "version": "1.0.0",
-  "build": 1,
-  "rust": ".",
-  "root": "App"
-}
+{"name": "Pandex", "id": "com.pandex.app", "version": "1.0.0", "build": 1, "rust": ".", "root": "App", "theme": {"cssVars": {"theme": {"radius": "0.75rem"}, "light": {"background": "#F4F3F8", "foreground": "#1C1B22", "card": "#FFFFFF", "card-foreground": "#1C1B22", "popover": "#FFFFFF", "popover-foreground": "#1C1B22", "primary": "#6D4AFF", "primary-foreground": "#FFFFFF", "secondary": "#ECEAF3", "secondary-foreground": "#3A3650", "muted": "#ECEAF3", "muted-foreground": "#6B6779", "accent": "#ECEAF3", "accent-foreground": "#1C1B22", "destructive": "#DC3545", "border": "#E2DFEA", "input": "#E2DFEA", "ring": "#6D4AFF"}, "dark": {"background": "#16141F", "foreground": "#F5F4F7", "card": "#232135", "card-foreground": "#F5F4F7", "popover": "#232135", "popover-foreground": "#F5F4F7", "primary": "#8A6EFF", "primary-foreground": "#FFFFFF", "secondary": "#2A273F", "secondary-foreground": "#E8E6F0", "muted": "#2A273F", "muted-foreground": "#A09CB0", "accent": "#2A273F", "accent-foreground": "#F5F4F7", "destructive": "#FF6B6B", "border": "#34314C", "input": "#34314C", "ring": "#8A6EFF"}}}}

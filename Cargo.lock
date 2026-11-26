@@ -2399,6 +2399,7 @@ dependencies = [
  "nsh-platform-macos",
  "nsh-platform-windows",
  "pandex-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -2874,6 +2875,8 @@ dependencies = [
  "argon2",
  "chacha20poly1305",
  "getrandom 0.4.3",
+ "serde",
+ "serde_json",
  "zeroize",
 ]
 
