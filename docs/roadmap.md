@@ -83,7 +83,15 @@ chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存�
   现象）→ `test_m0_autofill_apk.py` ✓ 2/2。产物 sanity：libnsh.so 含
   `pandex-vek-wrap-v1`/argon2/`Crypto` 错误变体，旧 `correct-password` 已消失。
   未做真机验收（无 adb 设备）。
-- Windows 构建链：待推送触发 CI `windows-package` job 后回写。
+- Windows 构建链（GitHub Actions）：提交 `ddfcfcb` 推送触发 run
+  [45661630331](https://github.com/pandas-coding/pandex/actions/runs/45661630331)：
+  `check` ✓ 3m48s（fmt/clippy/test）；`windows-package` ✓ 21m29s，exe 冒烟通过，
+  artifact `pandex-windows` 35,045,574 bytes（ID 15046402805）。Cargo.lock 新增
+  加密依赖使缓存 key 变化、crate 重编译，故耗时高于缓存命中基线。唯一 annotation
+  为 actions Node.js 20 弃用警告（后续维护事项）。
+
+**结论**：P5 验收 1–4 全部通过。解锁已走真实 Argon2id + XChaCha20-Poly1305，
+锁定清零密钥；API owned 化（FFI 前置）；threat-model 定稿。下一步 = P6。
 
 ## P6 数据模型 + 持久化 + 首次运行
 
@@ -218,7 +226,7 @@ Windows CI 打包链含宿主注册产物；构建链回归。
 
 ## 进度
 
-- [ ] P5 加密基础（含 threat-model 定稿）
+- [x] P5 加密基础（含 threat-model 定稿）
 - [ ] P6 数据模型 + 持久化
 - [ ] P7 超时自动锁定
 - [ ] P8 生物识别 + 平台密钥管理
