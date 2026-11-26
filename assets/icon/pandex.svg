@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Pandex app icon, current Proton Pass language: off-white rounded square
+       with the P-key glyph in the violet->peach gradient (violet = theme
+       primary #6D4AFF). The P's stem is the key shaft, its solid bowl the key
+       bow, with a keyhole cutout. Master source; regenerate raster sizes with
+       render.py (geometry constants must stay in sync).
+       The classic purple-square/white-glyph variant: render.py purple. -->
+  <defs>
+    <linearGradient id="pg" x1="354" y1="120" x2="158" y2="388" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6D4AFF"/>
+      <stop offset="1" stop-color="#F2A98A"/>
+    </linearGradient>
+    <mask id="p-key">
+      <rect width="512" height="512" fill="black"/>
+      <!-- stem (key shaft) -->
+      <rect x="158" y="128" width="44" height="260" rx="22" fill="white"/>
+      <!-- bowl (key bow) -->
+      <circle cx="264" cy="210" r="90" fill="white"/>
+      <!-- keyhole cutout -->
+      <circle cx="264" cy="196" r="27" fill="black"/>
+      <path d="M251 206 L277 206 L284 262 L244 262 Z" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="#F7F6FA"/>
+  <!-- Optical centering: the wide bowl needs more top clearance than the
+       narrow stem tip; keep translate in sync with render.py G_DY. -->
+  <rect width="512" height="512" fill="url(#pg)" mask="url(#p-key)" transform="translate(0,16)"/>
+</svg>
