@@ -225,10 +225,15 @@ chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存�
   时钟证明）；磁盘 `vault.pandex` 338B、权限 0600、`PANDEX` magic、无
   GitHub/octocat/明文密码/主密码泄漏 ✓。空闲测量期间息屏超时临时调 600s，
   测毕恢复 300000。
-- Windows 构建链（GitHub Actions）：待推送后补记。
+- Windows 构建链（GitHub Actions）：run
+  [45858167728](https://github.com/pandas-coding/pandex/actions/runs/45858167728)
+  （提交 `20b2c23`）：`check` ✓ 2m29s（fmt/clippy/test）；`windows-package` ✓ 3m21s
+  （缓存命中），exe 冒烟通过，artifact `pandex-windows` 33,311,375 bytes
+  （ID 15135954793）。唯一 annotation 为已知的 actions Node.js 20 弃用警告
+  （维护事项）。
 
-**结论**：P7 验收 1–3 通过（core 注入时间戳、nsh 模拟 tick、真机退后台回锁），
-构建链回归 Android 本地 + 真机通过；Windows CI 待推送后补记。下一步 = P8。
+**结论**：P7 验收 1–4 全部通过（core 注入时间戳、nsh 模拟 tick、真机退后台回锁、
+构建链回归 Android 本地 + 真机 + Windows CI）。下一步 = P8。
 
 ## P8 生物识别 + 平台密钥管理
 
@@ -326,7 +331,7 @@ Windows CI 打包链含宿主注册产物；构建链回归。
 
 - [x] P5 加密基础（含 threat-model 定稿）
 - [x] P6 数据模型 + 持久化（含 Proton 风格 UI 刷新与刘海安全区修复）
-- [ ] P7 超时自动锁定
+- [x] P7 超时自动锁定（含会话加固与 Proton Pass 风格应用图标）
 - [ ] P8 生物识别 + 平台密钥管理
 - [ ] P9 UniFFI 门面
 - [ ] P10 Android Autofill 真实接入
