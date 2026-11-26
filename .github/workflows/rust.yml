@@ -46,6 +46,10 @@ jobs:
       - name: Install NSH CLI
         shell: pwsh
         run: |
+          # NSH is locked at 0.6.1 (nsh.json + Cargo.toml); pin the CLI to the
+          # matching release so a newer latest (e.g. 0.7.x) cannot refuse the
+          # 0.6.1 dependencies. Upgrading NSH is a separate review.
+          $env:NSH_VERSION = 'v0.6.1'
           irm https://nsh.dev/install.ps1 | iex
           $nshBin = Join-Path $env:LOCALAPPDATA 'nsh\bin'
           Add-Content -Path $env:GITHUB_PATH -Value $nshBin

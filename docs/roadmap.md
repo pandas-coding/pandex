@@ -280,3 +280,5 @@ Windows CI 打包链含宿主注册产物；构建链回归。
 
 维护事项（可随任意阶段顺带）：CI actions 升级消除 Node.js 20 弃用警告；
 release 签名 keystore（P10 前必须）；NSH 升级评审（保持 0.6.1 锁定，除非单独评审）。
+已处理：Windows CI 的 NSH CLI 安装钉到 `v0.6.1`（`$env:NSH_VERSION`）——install.ps1
+默认装 latest，0.7.1 发布后会拒绝 0.6.1 依赖导致 windows-package 失败（P6 期间发现）。
