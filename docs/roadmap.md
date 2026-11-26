@@ -155,10 +155,18 @@ chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存�
   密码泄漏）→ `am force-stop` 冷重开进解锁屏 → 解锁后条目恢复。安全区实测：Vault
   头部 top=279px、Add/Lock top=295px，均避开 141px 刘海（修复前 Add/Lock 在 112px
   压刘海）。Proton 配色 headless 实测：light 卡片 #FFFFFF、dark 卡片 #232135。
-- Windows 构建链（GitHub Actions）：待推送触发，结论补记于此。
+- Windows 构建链（GitHub Actions）：run
+  [45841459112](https://github.com/pandas-coding/pandex/actions/runs/45841459112)
+  （提交 `22a73bc`）：`check` ✓ 1m24s（fmt/clippy/test）；`windows-package` ✓ 15m52s，
+  exe 冒烟通过，artifact `pandex-windows` 33,292,214 bytes（ID 15130555128）。
+  期间发现 install.ps1 默认装 latest 已升到 nsh 0.7.1、拒绝 0.6.1 依赖致
+  windows-package 失败（P6 首推 run 45839781558 的 `check` ✓ 但 windows-package ✗）；
+  修复把 CI 的 NSH CLI 钉到 `v0.6.1`（`$env:NSH_VERSION`），重跑装得 nsh 0.6.1
+  (2f51d86) 与本地一致后转绿。NSH 仍锁定 0.6.1，未升级。
 
-**结论**：P6 验收 1–2 全过，验收 3 的本地构建链 + Android 真机冒烟通过；Windows CI
-待推送后补记。下一步 = P7。
+**结论**：P6 验收 1–3 全部通过。库内容真实加密持久化（PANDEX v1，头部绑定 AAD）、
+首跑创建库替换演示夹具、锁定清零、按需披露；Proton 风格 UI 与刘海安全区修复真机
+验证通过；构建链回归（Android 本地 + 真机、Windows CI）全绿。下一步 = P7。
 
 ## P7 超时自动锁定 + 会话加固
 
@@ -270,7 +278,7 @@ Windows CI 打包链含宿主注册产物；构建链回归。
 ## 进度
 
 - [x] P5 加密基础（含 threat-model 定稿）
-- [ ] P6 数据模型 + 持久化（本地 + Android 真机验收通过；Windows CI 待推送补记）
+- [x] P6 数据模型 + 持久化（含 Proton 风格 UI 刷新与刘海安全区修复）
 - [ ] P7 超时自动锁定
 - [ ] P8 生物识别 + 平台密钥管理
 - [ ] P9 UniFFI 门面
