@@ -55,6 +55,31 @@ pub struct WrappedVek {
     pub ciphertext: Vec<u8>,
 }
 
+/// The auto-lock policy. All times are unix seconds injected by the caller
+/// ([`Core::tick`], [`Core::record_activity`], [`Core::on_background`],
+/// [`Core::on_foreground`]); the core reads no clock of its own for security
+/// decisions, so the API stays FFI-describable and headless-testable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LockPolicy {
+    /// Lock after this many seconds without activity in the foreground.
+    /// 0 disables the idle timeout.
+    pub idle_timeout_secs: u64,
+    /// Grace period after going to background before locking. 0 locks
+    /// immediately on the background event itself.
+    pub background_grace_secs: u64,
+}
+
+impl Default for LockPolicy {
+    /// Five idle minutes; locking as soon as the app leaves the foreground
+    /// (docs/threat-model.md, P7).
+    fn default() -> Self {
+        Self {
+            idle_timeout_secs: 300,
+            background_grace_secs: 0,
+        }
+    }
+}
+
 /// Everything a core command can fail with. Plain enum, FFI-describable.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
@@ -99,6 +124,13 @@ pub struct Core {
     /// decrypted content; the plaintext entries live only in `unlocked`.
     raw: Option<Vec<u8>>,
     unlocked: Option<Unlocked>,
+    policy: LockPolicy,
+    /// Caller-injected unix seconds of the last user activity. `None` until
+    /// the first activity or tick after unlocking seeds it.
+    last_activity: Option<u64>,
+    /// Caller-injected unix seconds of the background event, while the app
+    /// is in the background.
+    backgrounded_at: Option<u64>,
 }
 
 impl Core {
@@ -110,7 +142,66 @@ impl Core {
             store,
             raw,
             unlocked: None,
+            policy: LockPolicy::default(),
+            last_activity: None,
+            backgrounded_at: None,
         })
+    }
+
+    /// Replace the auto-lock policy; the next [`Core::tick`] enforces it.
+    pub fn set_lock_policy(&mut self, policy: LockPolicy) {
+        self.policy = policy;
+    }
+
+    /// Record user activity at caller-injected unix seconds, resetting the
+    /// idle timeout.
+    pub fn record_activity(&mut self, now: u64) {
+        self.last_activity = Some(now);
+    }
+
+    /// Enforce the auto-lock policy at caller-injected unix seconds. Returns
+    /// whether this call locked the core (the VEK and entries are zeroized
+    /// exactly as in [`Core::lock`]). While locked it does nothing.
+    pub fn tick(&mut self, now: u64) -> bool {
+        if self.unlocked.is_none() {
+            return false;
+        }
+        let last = *self.last_activity.get_or_insert(now);
+        let expired = match self.backgrounded_at {
+            Some(bg) => now.saturating_sub(bg) >= self.policy.background_grace_secs,
+            None => {
+                self.policy.idle_timeout_secs > 0
+                    && now.saturating_sub(last) >= self.policy.idle_timeout_secs
+            }
+        };
+        if expired {
+            self.lock();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The app went to background (Android `onStop`, Windows session lock /
+    /// minimize / display off). With the default zero grace this locks at
+    /// once; a longer grace is enforced by [`Core::tick`] and re-checked on
+    /// [`Core::on_foreground`], since timers may not run while suspended.
+    pub fn on_background(&mut self, now: u64) {
+        if self.unlocked.is_none() {
+            return;
+        }
+        self.backgrounded_at = Some(now);
+        self.tick(now);
+    }
+
+    /// The app returned to the foreground. Locks if the background grace
+    /// expired meanwhile; otherwise the return counts as activity.
+    pub fn on_foreground(&mut self, now: u64) {
+        self.tick(now);
+        if self.unlocked.is_some() {
+            self.backgrounded_at = None;
+            self.last_activity = Some(now);
+        }
     }
 
     /// Whether a vault image is loaded (created or reopened).
@@ -150,7 +241,7 @@ impl Core {
         let bytes = image.to_bytes();
         self.store.save(&bytes).map_err(|_| Error::Storage)?;
         self.raw = Some(bytes);
-        self.unlocked = Some(Unlocked {
+        self.enter_unlocked(Unlocked {
             vek,
             entries: Vec::new(),
         });
@@ -179,7 +270,7 @@ impl Core {
         )?;
         let entries: Vec<Entry> = serde_json::from_slice(&plaintext).map_err(|_| Error::Corrupt)?;
 
-        self.unlocked = Some(Unlocked { vek, entries });
+        self.enter_unlocked(Unlocked { vek, entries });
         Ok(())
     }
 
@@ -192,6 +283,17 @@ impl Core {
             }
             unlocked.entries.clear();
         }
+        self.last_activity = None;
+        self.backgrounded_at = None;
+    }
+
+    /// Enter the unlocked state with a fresh activity timeline: the first
+    /// activity or tick seeds it, so a long-idle clock cannot lock a vault
+    /// that was just unlocked.
+    fn enter_unlocked(&mut self, unlocked: Unlocked) {
+        self.unlocked = Some(unlocked);
+        self.last_activity = None;
+        self.backgrounded_at = None;
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -790,5 +892,155 @@ mod tests {
             crypto::decrypt_content(&vek, &nonce, &ct, b"different-header"),
             Err(Error::InvalidPassword)
         );
+    }
+
+    // P7 auto-lock state machine: every timestamp is caller-injected.
+
+    #[test]
+    fn tick_before_idle_timeout_keeps_unlocked() {
+        let mut core = unlocked_core();
+        core.record_activity(1_000);
+        assert!(!core.tick(1_299));
+        assert!(!core.snapshot().is_locked);
+    }
+
+    #[test]
+    fn idle_timeout_locks_and_zeroizes() {
+        let mut core = unlocked_core();
+        core.add_entry(draft("GitHub", "octocat", "s3cret"))
+            .unwrap();
+        core.record_activity(1_000);
+        assert!(core.tick(1_300));
+        assert!(core.snapshot().is_locked);
+        assert!(core.entries().is_empty());
+        assert!(core.vek_bytes().is_none());
+        // Locked ticks do nothing further.
+        assert!(!core.tick(9_999));
+    }
+
+    #[test]
+    fn activity_resets_the_idle_timer() {
+        let mut core = unlocked_core();
+        core.record_activity(1_000);
+        assert!(!core.tick(1_200));
+        core.record_activity(1_200);
+        assert!(!core.tick(1_400));
+        assert!(core.tick(1_500));
+    }
+
+    #[test]
+    fn first_tick_after_unlock_seeds_activity() {
+        let mut core = unlocked_core();
+        // No recorded activity: a far-future first tick must not lock.
+        assert!(!core.tick(10_000));
+        assert!(!core.tick(10_299));
+        assert!(core.tick(10_300));
+
+        // Unlocking again restarts the timeline.
+        core.unlock(TEST_PASSWORD).unwrap();
+        assert!(!core.tick(50_000));
+        assert!(core.tick(50_300));
+    }
+
+    #[test]
+    fn zero_idle_timeout_disables_auto_lock() {
+        let mut core = unlocked_core();
+        core.set_lock_policy(super::LockPolicy {
+            idle_timeout_secs: 0,
+            background_grace_secs: 0,
+        });
+        core.record_activity(1_000);
+        assert!(!core.tick(1_000_000));
+        assert!(!core.snapshot().is_locked);
+    }
+
+    #[test]
+    fn idle_timeout_is_configurable() {
+        let mut core = unlocked_core();
+        core.set_lock_policy(super::LockPolicy {
+            idle_timeout_secs: 60,
+            background_grace_secs: 0,
+        });
+        core.record_activity(1_000);
+        assert!(!core.tick(1_059));
+        assert!(core.tick(1_060));
+    }
+
+    #[test]
+    fn background_locks_immediately_by_default() {
+        let mut core = unlocked_core();
+        core.record_activity(1_000);
+        core.on_background(1_001);
+        assert!(core.snapshot().is_locked);
+        assert!(core.vek_bytes().is_none());
+    }
+
+    #[test]
+    fn background_grace_is_configurable() {
+        let mut core = unlocked_core();
+        core.set_lock_policy(super::LockPolicy {
+            idle_timeout_secs: 300,
+            background_grace_secs: 30,
+        });
+        core.record_activity(1_000);
+        core.on_background(1_100);
+        assert!(!core.snapshot().is_locked);
+        assert!(!core.tick(1_129));
+        assert!(core.tick(1_130));
+    }
+
+    #[test]
+    fn foreground_within_grace_resumes_and_counts_as_activity() {
+        let mut core = unlocked_core();
+        core.set_lock_policy(super::LockPolicy {
+            idle_timeout_secs: 300,
+            background_grace_secs: 30,
+        });
+        core.record_activity(1_000);
+        core.on_background(1_100);
+        core.on_foreground(1_120);
+        assert!(!core.snapshot().is_locked);
+        // The idle timer restarted at the foreground return, and the
+        // background deadline no longer applies.
+        assert!(!core.tick(1_419));
+        assert!(core.tick(1_420));
+    }
+
+    #[test]
+    fn foreground_after_expired_grace_locks() {
+        let mut core = unlocked_core();
+        core.set_lock_policy(super::LockPolicy {
+            idle_timeout_secs: 300,
+            background_grace_secs: 30,
+        });
+        core.record_activity(1_000);
+        core.on_background(1_100);
+        // Timers did not run while suspended; the return re-checks the grace.
+        core.on_foreground(1_131);
+        assert!(core.snapshot().is_locked);
+        assert!(core.vek_bytes().is_none());
+    }
+
+    #[test]
+    fn lifecycle_events_while_locked_are_noops() {
+        let mut core = memory_core();
+        core.create_vault(TEST_PASSWORD).unwrap();
+        core.lock();
+        core.on_background(1_000);
+        core.on_foreground(1_001);
+        assert!(core.snapshot().is_locked);
+        assert!(!core.tick(1_002));
+    }
+
+    #[test]
+    fn auto_lock_survives_reopen_unlock() {
+        let mut core = unlocked_core();
+        core.add_entry(draft("GitHub", "octocat", "s3cret"))
+            .unwrap();
+        core.record_activity(1_000);
+        assert!(core.tick(1_300));
+        core.unlock(TEST_PASSWORD).unwrap();
+        assert_eq!(core.snapshot().item_count, 1);
+        assert!(!core.tick(2_000));
     }
 }

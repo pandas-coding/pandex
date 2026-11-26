@@ -183,6 +183,53 @@ chacha20poly1305 0.11、zeroize 1.9、getrandom 0.4。P5 库内容仍为内存�
 **验收**：core 测试用注入时间戳覆盖超时/活动重置/后台策略；`nsh test` 模拟 tick；
 真机验证退后台超时回锁。构建链回归。
 
+### P7 验收记录（2026-11-26）
+
+实现：
+
+- core：`LockPolicy { idle_timeout_secs, background_grace_secs }`（默认 300/0；
+  idle 0 表示关闭空闲超时）。`record_activity(now)` / `tick(now) -> bool` /
+  `on_background(now)` / `on_foreground(now)`，unix 秒一律调用方注入；解锁/创建后
+  首个 tick 播种活动时间线（久置时钟不会立即锁掉刚解锁的库）；`on_foreground`
+  复查后台宽限（挂起期间定时器可能不运行）；自动锁定复用 `lock()` 清零路径，
+  `lock()` 同时清活动/后台时间戳。
+- app 薄壳：`set_interval(1s)` 驱动 tick；`effect` 订阅 `lifecycle()`
+  （Background → `on_background`、Active → `on_foreground`、Inactive 不另设策略）；
+  用户事件（按钮、表单键入）`record_activity`；锁定后 `clear_secrets` 清空主密码
+  与条目表单全部明文信号（手动与自动同路径）。
+- **宿主零改动**：NSH 0.6.1 的 NshView 内部注册 `ActivityLifecycleCallbacks`
+  （onStop → Background）；Windows presence 层把会话锁（Win+L）、息屏、会话断开、
+  虚拟桌面 cloak、最小化/隐藏映射为 Background——roadmap 预设的「NSH 窗口事件
+  能力缺口」不存在，该项关闭。
+- threat-model.md 增「超时与后台锁定策略（P7 定稿）」并关闭对应待定项。
+- 顺带（用户要求）：Proton Pass 风格应用图标定稿——off-white 底 + 紫→暖橙渐变
+  P-key（竖笔钥匙杆、圆头钥匙头镂空钥匙孔），光学居中下移 16px；`assets/icon/`
+  主 SVG + 纯标准库双风格渲染器 + 512/ICO/预览；Android mipmap legacy 五档 +
+  自适应双层 + anydpi-v26 XML + Manifest icon/roundIcon，真机桌面验证。缺口记录：
+  NSH 0.6.1 打包不支持嵌入 exe 图标，`pandex.ico` 暂存供安装器/后续 NSH 支持。
+
+验证：
+
+- 本地基线（WSL）：`cargo fmt --check` ✓、`cargo clippy --workspace --all-targets
+  --locked -D warnings` ✓、`cargo test --workspace --locked` ✓（core 49 passed：
+  新增 12 个注入时间戳状态机测试——超时边界/活动重置/首 tick 播种/可配置策略/
+  后台宽限/回前台复查/锁定态 no-op）；`nsh test` ✓ 8 用例（新增 3：空闲自动锁
+  清空表单、活动重置计时、后台立即锁且回前台保持锁定；手动时钟
+  `open(".", { clock: {} })` + `clock.fastForward` / `setLifecycle`）。
+- Android 构建链（WSL 本地）：`nsh package --target android --abi arm64-v8a` ✓ →
+  刷新 jniLibs/assets ✓ → `gradle :app:assembleDebug :app:assembleRelease
+  :autofill:lintDebug` ✓ → `test_m0_autofill_apk.py` ✓ 2/2。
+- Android 真机（BVL-AN16，WiFi adb）：首跑创建 → 添加条目 → `am force-stop`
+  冷重开解锁恢复 ✓；Home 退后台 3s 回前台**立即回锁**（列表清空）✓；310s 无交互
+  自动回锁 ✓（空闲 tick 与息屏后台策略共同作用，空闲 tick 单独由 headless 注入
+  时钟证明）；磁盘 `vault.pandex` 338B、权限 0600、`PANDEX` magic、无
+  GitHub/octocat/明文密码/主密码泄漏 ✓。空闲测量期间息屏超时临时调 600s，
+  测毕恢复 300000。
+- Windows 构建链（GitHub Actions）：待推送后补记。
+
+**结论**：P7 验收 1–3 通过（core 注入时间戳、nsh 模拟 tick、真机退后台回锁），
+构建链回归 Android 本地 + 真机通过；Windows CI 待推送后补记。下一步 = P8。
+
 ## P8 生物识别 + 平台密钥管理
 
 **范围**：Android Keystore/BiometricPrompt（Kotlin 宿主模块）、Windows Hello（Rust `windows` crate）；

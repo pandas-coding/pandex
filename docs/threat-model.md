@@ -1,8 +1,9 @@
-# 威胁模型与密钥策略（P5 定稿）
+# 威胁模型与密钥策略（P5 定稿，P7 增补超时/后台锁定）
 
 本文定稿威胁模型、KDF 参数、密钥层级、锁定与敏感内存清零策略，关闭
 [architecture.md](architecture.md) 待定事项中的威胁模型/密钥相关条目。
-库文件格式见 P6，平台硬件密钥见 P8，同步范围见 P12（[roadmap.md](roadmap.md)）。
+库文件格式见 P6，超时与后台锁定策略见下（P7），平台硬件密钥见 P8，
+同步范围见 P12（[roadmap.md](roadmap.md)）。
 
 ## 资产与攻击者模型
 
@@ -81,8 +82,36 @@ content_ct_len u32 | content_ct[...]  (条目集 serde_json 经 VEK 加密)
   解密内容。
 - KEK 与解包裹中间明文均为 `Zeroizing`，离开作用域即清零。
 - 锁定态快照 / 条目接口不暴露任何敏感数据。
-- UI 锁定后清空密码输入框（薄壳已有行为）。
-- 超时自动锁定在 P7；时间由调用方显式注入（FFI 可描述）。
+- UI 锁定后清空密码输入框与条目表单（含明文密码信号），手动与自动锁定同路径。
+
+## 超时与后台锁定策略（P7 定稿）
+
+core 维护 `last_activity` 与 `LockPolicy { idle_timeout_secs, background_grace_secs }`
+（plain struct，FFI 可描述）。**时间一律由调用方显式注入**（unix 秒）：
+`record_activity(now)`、`tick(now) -> bool`、`on_background(now)`、`on_foreground(now)`；
+core 不为安全决策读系统时钟（条目元数据时间戳除外），headless 可注入任意时间测试。
+
+- **默认策略**：前台空闲 300 秒（5 分钟）自动锁定；后台宽限 0 秒——收到后台事件
+  立即锁定。`idle_timeout_secs = 0` 表示关闭空闲超时（可配置，默认不开）。
+- **前台（Active）**：UI 每秒 `tick(now)`；用户事件（按键、按钮、表单输入）
+  `record_activity(now)` 重置计时。解锁/创建库重置活动时间线，首个 tick 播种，
+  避免久置时钟立即锁掉刚解锁的库。
+- **后台（Background）→ 立即锁定**（默认宽限 0）。宽限 > 0 时由 tick 执行；
+  挂起期间定时器可能不运行，故 `on_foreground(now)` 先复查宽限是否已过期
+  （过期即锁），未过期则回前台本身计为活动。
+- **Inactive（可见但无焦点）不另设策略**：窗口仍可见且 `FLAG_SECURE` 全覆盖，
+  空闲计时照常。
+- 自动锁定复用 `lock()` 的清零路径（VEK + 全部解密条目 zeroize）。
+
+平台事件来源（NSH 0.6.1 的能力，薄壳只读 `lifecycle()`，无需宿主改代码）：
+
+- **Android**：NshView 内部注册 `ActivityLifecycleCallbacks`，`onStop` →
+  Background、`onPause` → Inactive、`onResume` → Active。退后台（Home/切换应用）
+  即锁。
+- **Windows**：NSH presence 层把会话锁（Win+L、睡眠/超时后的锁屏）、显示器关闭、
+  会话断开/切换用户、虚拟桌面 cloak、窗口最小化/隐藏全部映射为 Background；
+  失焦为 Inactive。睡眠唤醒经 `wakeCount()`/lifecycle 复查。**无能力缺口**。
+- 锁定后 UI 清空主密码与条目表单的全部明文信号（薄壳 `clear_secrets`）。
 
 ## 信任边界
 
@@ -100,6 +129,6 @@ content_ct_len u32 | content_ct[...]  (条目集 serde_json 经 VEK 加密)
 ## 后续阶段关闭的待定项
 
 - ~~库文件格式 / 存储~~：已于 P6 定稿（见上）；备份与迁移机制仍待定。
-- 后台 / 超时锁定策略细节 → P7。
+- ~~后台 / 超时锁定策略细节~~：已于 P7 定稿（见上）。
 - 平台硬件密钥（Keystore / Windows Hello）与生物识别 → P8。
 - 同步范围与冲突策略 → P12。

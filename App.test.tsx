@@ -74,6 +74,65 @@ test("wrong master password is rejected", async () => {
   expect(app.texts()).not.toContain("Vault");
 });
 
+test("idle timeout auto-locks and wipes the open form", async () => {
+  const app = await open(".", { clock: {} });
+  await createVault(app);
+  await app.press("Add");
+  await app.type("id:entry-title", "GitHub");
+  await app.type("id:entry-password", "s3cret");
+
+  // 4 idle minutes: under the 5-minute default, still unlocked.
+  await app.clock.fastForward(240_000);
+  expect(app.texts()).toContain("Add entry");
+
+  // Crossing the boundary auto-locks: the form and its plaintext are gone.
+  await app.clock.fastForward(61_000);
+  expect(app.texts()).toContain("Unlock your vault");
+  expect(app.texts()).not.toContain("Add entry");
+  expect(app.value("id:master-password")).toBe("");
+
+  // Unlocking restores the vault with the form closed and empty.
+  await app.type("id:master-password", "correct horse");
+  await app.press("Unlock");
+  expect(app.texts()).toContain("Vault");
+  expect(app.texts()).not.toContain("Add entry");
+});
+
+test("activity resets the idle timer", async () => {
+  const app = await open(".", { clock: {} });
+  await createVault(app);
+  await app.clock.fastForward(240_000);
+
+  // Opening the form counts as activity: the timer restarts here.
+  await app.press("Add");
+  await app.clock.fastForward(240_000);
+  expect(app.texts()).toContain("Add entry");
+
+  // 301s after the last activity: locked.
+  await app.clock.fastForward(61_000);
+  expect(app.texts()).toContain("Unlock your vault");
+});
+
+test("going to background locks immediately and stays locked", async () => {
+  const app = await open(".");
+  await createVault(app);
+  await app.press("Add");
+  await app.type("id:entry-password", "s3cret");
+
+  await app.setLifecycle("background");
+  expect(app.texts()).toContain("Unlock your vault");
+  expect(app.texts()).not.toContain("Add entry");
+
+  // Returning to the foreground does not unlock.
+  await app.setLifecycle("active");
+  expect(app.texts()).toContain("Unlock your vault");
+
+  await app.type("id:master-password", "correct horse");
+  await app.press("Unlock");
+  expect(app.texts()).toContain("Vault");
+  expect(app.texts()).not.toContain("Add entry");
+});
+
 test("edit and delete an entry", async () => {
   const app = await open(".");
   await createVault(app);

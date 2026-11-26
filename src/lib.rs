@@ -11,9 +11,11 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use nsh_base::theme;
 use nsh_core::element::{AutoFill, input};
+use nsh_core::platform::Lifecycle;
 use nsh_core::prelude::*;
 use pandex_core::{
     Core, EntryDraft, EntrySummary, Error, FileStore, MemoryStore, Snapshot, VaultStore,
@@ -66,9 +68,62 @@ pub fn App() -> impl IntoElement {
     // Seed the initial snapshot from the real core (has_vault drives the branch).
     refresh();
 
+    // P7 auto-lock. User events reset the idle timer; a 1s tick and the
+    // platform lifecycle enforce the core's policy (default: 5 idle minutes,
+    // immediate lock on background — docs/threat-model.md).
+    let touch: Rc<dyn Fn()> = {
+        let core = Rc::clone(&state.core);
+        Rc::new(move || core.borrow_mut().record_activity(now_secs()))
+    };
+    // Wipe every plaintext-bearing input: master password and entry form.
+    let clear_secrets: Rc<dyn Fn()> = Rc::new(move || {
+        password.set(String::new());
+        confirm.set(String::new());
+        error.set(String::new());
+        form_open.set(false);
+        editing_id.set(String::new());
+        f_title.set(String::new());
+        f_username.set(String::new());
+        f_password.set(String::new());
+    });
+    {
+        let state = Rc::clone(&state);
+        let clear_secrets = Rc::clone(&clear_secrets);
+        let refresh = Rc::clone(&refresh);
+        set_interval(Duration::from_secs(1), move || {
+            if state.core.borrow_mut().tick(now_secs()) {
+                clear_secrets();
+                refresh();
+            }
+        });
+    }
+    effect({
+        let state = Rc::clone(&state);
+        let clear_secrets = Rc::clone(&clear_secrets);
+        let refresh = Rc::clone(&refresh);
+        move || {
+            let lifecycle = lifecycle();
+            let now = now_secs();
+            let mut core = state.core.borrow_mut();
+            let was_locked = core.snapshot().is_locked;
+            match lifecycle {
+                Lifecycle::Background => core.on_background(now),
+                Lifecycle::Active => core.on_foreground(now),
+                Lifecycle::Inactive => {}
+            }
+            let locked = core.snapshot().is_locked;
+            drop(core);
+            if locked && !was_locked {
+                clear_secrets();
+                refresh();
+            }
+        }
+    });
+
     let create: Rc<dyn Fn()> = {
         let core = Rc::clone(&state.core);
         let refresh = Rc::clone(&refresh);
+        let touch = Rc::clone(&touch);
         Rc::new(move || {
             let pw = password.get();
             if pw.is_empty() {
@@ -85,6 +140,7 @@ pub fn App() -> impl IntoElement {
                     password.set(String::new());
                     confirm.set(String::new());
                     error.set(String::new());
+                    touch();
                     refresh();
                 }
                 Err(e) => error.set(error_message(e)),
@@ -94,12 +150,14 @@ pub fn App() -> impl IntoElement {
     let unlock: Rc<dyn Fn()> = {
         let core = Rc::clone(&state.core);
         let refresh = Rc::clone(&refresh);
+        let touch = Rc::clone(&touch);
         Rc::new(move || {
             let result = core.borrow_mut().unlock(&password.get());
             match result {
                 Ok(()) => {
                     password.set(String::new());
                     error.set(String::new());
+                    touch();
                     refresh();
                 }
                 Err(e) => error.set(error_message(e)),
@@ -109,24 +167,30 @@ pub fn App() -> impl IntoElement {
     let lock: Rc<dyn Fn()> = {
         let core = Rc::clone(&state.core);
         let refresh = Rc::clone(&refresh);
+        let clear_secrets = Rc::clone(&clear_secrets);
         Rc::new(move || {
             core.borrow_mut().lock();
-            password.set(String::new());
-            error.set(String::new());
+            clear_secrets();
             refresh();
         })
     };
-    let open_add: Rc<dyn Fn()> = Rc::new(move || {
-        editing_id.set(String::new());
-        f_title.set(String::new());
-        f_username.set(String::new());
-        f_password.set(String::new());
-        error.set(String::new());
-        form_open.set(true);
-    });
+    let open_add: Rc<dyn Fn()> = {
+        let touch = Rc::clone(&touch);
+        Rc::new(move || {
+            touch();
+            editing_id.set(String::new());
+            f_title.set(String::new());
+            f_username.set(String::new());
+            f_password.set(String::new());
+            error.set(String::new());
+            form_open.set(true);
+        })
+    };
     let open_edit: Rc<dyn Fn(String)> = {
         let core = Rc::clone(&state.core);
+        let touch = Rc::clone(&touch);
         Rc::new(move |id: String| {
+            touch();
             let result = core.borrow().entry(&id);
             match result {
                 Ok(e) => {
@@ -144,7 +208,9 @@ pub fn App() -> impl IntoElement {
     let save_form: Rc<dyn Fn()> = {
         let core = Rc::clone(&state.core);
         let refresh = Rc::clone(&refresh);
+        let touch = Rc::clone(&touch);
         Rc::new(move || {
+            touch();
             let title = f_title.get();
             if title.is_empty() {
                 error.set("Enter a title.".to_owned());
@@ -189,18 +255,24 @@ pub fn App() -> impl IntoElement {
             }
         })
     };
-    let cancel_form: Rc<dyn Fn()> = Rc::new(move || {
-        form_open.set(false);
-        editing_id.set(String::new());
-        f_title.set(String::new());
-        f_username.set(String::new());
-        f_password.set(String::new());
-        error.set(String::new());
-    });
+    let cancel_form: Rc<dyn Fn()> = {
+        let touch = Rc::clone(&touch);
+        Rc::new(move || {
+            touch();
+            form_open.set(false);
+            editing_id.set(String::new());
+            f_title.set(String::new());
+            f_username.set(String::new());
+            f_password.set(String::new());
+            error.set(String::new());
+        })
+    };
     let delete: Rc<dyn Fn(String)> = {
         let core = Rc::clone(&state.core);
         let refresh = Rc::clone(&refresh);
+        let touch = Rc::clone(&touch);
         Rc::new(move |id: String| {
+            touch();
             let result = core.borrow_mut().delete_entry(&id);
             match result {
                 Ok(()) => {
@@ -231,10 +303,12 @@ pub fn App() -> impl IntoElement {
                         let save_form = Rc::clone(&save_form);
                         let cancel_form = Rc::clone(&cancel_form);
                         let delete = Rc::clone(&delete);
+                        let touch = Rc::clone(&touch);
                         move || {
                             let state_unlock = Rc::clone(&state);
                             let unlock_screen = {
                                 let unlock = Rc::clone(&unlock);
+                                let touch = Rc::clone(&touch);
                                 move || {
                                     view()
                                         .flex_1()
@@ -264,6 +338,7 @@ pub fn App() -> impl IntoElement {
                                             password,
                                             true,
                                             Rc::clone(&unlock),
+                                            Rc::clone(&touch),
                                         ))
                                         .child(error_banner(error))
                                         .child(button("Unlock", true, true, Rc::clone(&unlock)))
@@ -277,6 +352,7 @@ pub fn App() -> impl IntoElement {
                                 let save_form = Rc::clone(&save_form);
                                 let cancel_form = Rc::clone(&cancel_form);
                                 let delete = Rc::clone(&delete);
+                                let touch = Rc::clone(&touch);
                                 move || {
                                     let entries = state.entries;
                                     let open_edit = Rc::clone(&open_edit);
@@ -369,6 +445,7 @@ pub fn App() -> impl IntoElement {
                                     let form = {
                                         let save_form = Rc::clone(&save_form);
                                         let cancel_form = Rc::clone(&cancel_form);
+                                        let touch = Rc::clone(&touch);
                                         move || {
                                             view()
                                                 .flex_1()
@@ -393,6 +470,7 @@ pub fn App() -> impl IntoElement {
                                                             f_title,
                                                             false,
                                                             Rc::clone(&save_form),
+                                                            Rc::clone(&touch),
                                                         ))
                                                         .child(field(
                                                             "entry-username",
@@ -400,6 +478,7 @@ pub fn App() -> impl IntoElement {
                                                             f_username,
                                                             false,
                                                             Rc::clone(&save_form),
+                                                            Rc::clone(&touch),
                                                         ))
                                                         .child(field(
                                                             "entry-password",
@@ -407,6 +486,7 @@ pub fn App() -> impl IntoElement {
                                                             f_password,
                                                             true,
                                                             Rc::clone(&save_form),
+                                                            Rc::clone(&touch),
                                                         )),
                                                 )
                                                 .child(error_banner(error))
@@ -471,6 +551,7 @@ pub fn App() -> impl IntoElement {
                     })
                     .otherwise({
                         let create = Rc::clone(&create);
+                        let touch = Rc::clone(&touch);
                         move || {
                             view()
                                 .flex_1()
@@ -503,6 +584,7 @@ pub fn App() -> impl IntoElement {
                                             password,
                                             true,
                                             Rc::clone(&create),
+                                            Rc::clone(&touch),
                                         ))
                                         .child(field(
                                             "create-confirm",
@@ -510,6 +592,7 @@ pub fn App() -> impl IntoElement {
                                             confirm,
                                             true,
                                             Rc::clone(&create),
+                                            Rc::clone(&touch),
                                         )),
                                 )
                                 .child(error_banner(error))
@@ -519,6 +602,13 @@ pub fn App() -> impl IntoElement {
                 ),
             ),
         )
+}
+
+/// Caller-injected time for the core's auto-lock state machine: unix seconds
+/// on the engine's clock (the manual one under `nsh test`). The core reads no
+/// clock of its own for security decisions.
+fn now_secs() -> u64 {
+    (nsh_core::time::unix_ms() / 1000.0) as u64
 }
 
 /// Apply the Proton theme from `nsh.json` at runtime so every entry point —
@@ -574,13 +664,14 @@ fn letter_avatar(title: impl Fn() -> String + 'static) -> impl IntoElement {
 }
 
 /// A rounded, card-filled text input bound to a signal; `submit` fires on the
-/// return key.
+/// return key. Typing counts as user activity for the auto-lock idle timer.
 fn field(
     tid: &'static str,
     placeholder: &'static str,
     value: Signal<String>,
     masked: bool,
     submit: Rc<dyn Fn()>,
+    touch: Rc<dyn Fn()>,
 ) -> impl IntoElement {
     input()
         .test_id(tid)
@@ -594,7 +685,10 @@ fn field(
         .border(px(1.0))
         .border_color(move || theme().input)
         .value(move || value.get())
-        .on_change(move |text: &str| value.set(text.to_owned()))
+        .on_change(move |text: &str| {
+            value.set(text.to_owned());
+            touch();
+        })
         .placeholder(placeholder)
         .masked(masked)
         .auto_capitalize(AutoCapitalize::None)
